@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CargoCheck — Customs Document Verification</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg: #141b24;
+    --surface: #1c2530;
+    --surface-2: #232e3b;
+    --surface-3: #2a3644;
+    --border: #33414f;
+    --border-soft: #2a3542;
+    --text: #e8ecf0;
+    --text-dim: #93a3b1;
+    --text-faint: #5f6f7e;
+    --pass: #4fa88c;
+    --pass-dim: #2d4640;
+    --fail: #d9685f;
+    --fail-dim: #4a2f2d;
+    --warn: #e2a33d;
+    --warn-dim: #4a3c22;
+    --primary: #6f9bd1;
+    --primary-dim: #24374d;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(111,155,209,0.08), transparent),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(79,168,140,0.05), transparent);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.5;
+    min-height: 100vh;
+    padding-bottom: 110px;
+  }
+  ::selection{ background: var(--primary-dim); }
+  a { color: var(--primary); }
+
+  /* Header */
+  header.topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 22px 32px;
+    border-bottom: 1px solid var(--border-soft);
+    background: rgba(20,27,36,0.85);
+    backdrop-filter: blur(8px);
+    position: sticky; top:0; z-index: 40;
+  }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand-mark{
+    height:36px; width:auto; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .brand-mark img{ height:36px; width:auto; display:block; }
+  .brand-text h1{
+    font-family: var(--font-display); font-size:17px; font-weight:600; margin:0; letter-spacing:0.2px;
+  }
+  .brand-text p{ margin:0; font-size:12px; color: var(--text-dim); }
+  .lang-select{
+    display:flex; align-items:center; gap:8px;
+    font-size:12.5px; color: var(--text-dim);
+  }
+  .lang-select select{
+    background: var(--surface-2); color: var(--text); border:1px solid var(--border);
+    border-radius:7px; padding:6px 10px; font-family: var(--font-body); font-size:12.5px;
+  }
+
+  main{ max-width: 980px; margin: 0 auto; padding: 28px 24px 40px; }
+
+  /* Rules panel */
+  .rules-panel{
+    background: var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius: var(--radius);
+    margin-bottom: 22px;
+    overflow:hidden;
+  }
+  .rules-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 14px 18px; cursor:pointer; user-select:none;
+  }
+  .rules-header-left{ display:flex; align-items:center; gap:10px; }
+  .rules-header h2{ font-family: var(--font-display); font-size:14.5px; font-weight:600; margin:0; }
+  .rules-count{
+    font-size:11px; color: var(--text-dim); background: var(--surface-3);
+    padding: 2px 8px; border-radius: 20px;
+  }
+  .chevron{ transition: transform 0.2s ease; color: var(--text-dim); }
+  .chevron.open{ transform: rotate(180deg); }
+  .rules-body{ display:none; padding: 4px 18px 18px; border-top: 1px solid var(--border-soft); }
+  .rules-body.open{ display:block; }
+  .rule-row{
+    display:flex; align-items:center; gap:12px;
+    padding: 10px 0; border-bottom: 1px dashed var(--border-soft);
+    font-size: 13px;
+  }
+  .rule-row:last-of-type{ border-bottom:none; }
+  .toggle{
+    width:34px; height:19px; border-radius:20px; background: var(--surface-3);
+    border:1px solid var(--border); position:relative; cursor:pointer; flex-shrink:0;
+    transition: background 0.15s ease;
+  }
+  .toggle.on{ background: var(--pass-dim); border-color: var(--pass); }
+  .toggle-dot{
+    width:13px; height:13px; border-radius:50%; background: var(--text-faint);
+    position:absolute; top:2px; left:2px; transition: all 0.15s ease;
+  }
+  .toggle.on .toggle-dot{ background: var(--pass); left:17px; }
+  .rule-label{ flex:1; min-width:0; }
+  .rule-label .name{ font-weight:500; }
+  .rule-label .meta{ color: var(--text-faint); font-size:11.5px; font-family: var(--font-mono); }
+  .rule-tag{
+    font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim);
+    background: var(--surface-3); padding: 2px 7px; border-radius: 5px; white-space:nowrap;
+  }
+  .rule-remove{
+    background:none; border:none; color: var(--text-faint); cursor:pointer; font-size:16px;
+    padding: 2px 6px; border-radius:5px;
+  }
+  .rule-remove:hover{ color: var(--fail); background: var(--fail-dim); }
+  .add-rule-btn{
+    margin-top: 12px; background: var(--surface-2); border:1px dashed var(--border);
+    color: var(--text-dim); font-size:12.5px; padding: 8px 14px; border-radius:7px;
+    cursor:pointer; font-family: var(--font-body); width:100%; text-align:left;
+  }
+  .add-rule-btn:hover{ color: var(--text); border-color: var(--primary); }
+  .add-rule-form{
+    margin-top:10px; background: var(--surface-2); border:1px solid var(--border);
+    border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:10px;
+  }
+  .add-rule-form .row{ display:flex; gap:10px; }
+  .add-rule-form input, .add-rule-form select{
+    background: var(--surface-3); border:1px solid var(--border); color: var(--text);
+    border-radius:6px; padding:8px 10px; font-family: var(--font-body); font-size:12.5px; flex:1;
+    min-width:0;
+  }
+  .form-actions{ display:flex; gap:8px; justify-content:flex-end; }
+  .btn-small{
+    font-size:12px; padding:7px 13px; border-radius:6px; border:1px solid var(--border);
+    background: var(--surface-3); color: var(--text-dim); cursor:pointer; font-family: var(--font-body);
+  }
+  .btn-small.primary{ background: var(--primary-dim); border-color: var(--primary); color: #cfe0f5; }
+  .btn-small:hover{ filter: brightness(1.15); }
+
+  /* Document sets */
+  .set-card{
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+  .set-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 16px 18px; border-bottom: 1px solid var(--border-soft);
+  }
+  .set-title-wrap{ display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
+  .set-index{
+    font-family: var(--font-mono); font-size:11px; color: var(--text-faint);
+    background: var(--surface-3); width:24px; height:24px; border-radius:6px;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .set-title{
+    font-family: var(--font-display); font-size:15px; font-weight:600;
+    background:none; border:none; color: var(--text); padding:2px 4px; border-radius:5px;
+    max-width: 100%;
+  }
+  .set-title:focus{ outline: 1px solid var(--primary); background: var(--surface-2); }
+  .set-remove{
+    background:none; border:none; color: var(--text-faint); cursor:pointer; font-size:13px;
+    padding:6px 10px; border-radius:6px; flex-shrink:0;
+  }
+  .set-remove:hover{ color: var(--fail); background: var(--fail-dim); }
+
+  .set-body{ padding: 18px; }
+  .upload-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  @media (max-width: 680px){ .upload-grid{ grid-template-columns: 1fr; } }
+
+  .upload-zone{
+    border: 1.5px dashed var(--border);
+    border-radius: 9px;
+    padding: 16px;
+    background: var(--surface-2);
+    transition: border-color 0.15s ease, background 0.15s ease;
+    min-height: 130px;
+  }
+  .upload-zone.drag{ border-color: var(--primary); background: var(--primary-dim); }
+  .upload-zone-label{ font-size:12px; font-weight:600; color: var(--text-dim); margin-bottom:2px; letter-spacing:0.2px; text-transform:uppercase; }
+  .upload-zone-hint{ font-size:11.5px; color: var(--text-faint); margin-bottom:10px; }
+  .drop-inner{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:6px; padding: 14px 6px; cursor:pointer; border-radius:7px; text-align:center;
+  }
+  .drop-inner:hover{ background: var(--surface-3); }
+  .drop-icon{ font-size:20px; color: var(--text-faint); }
+  .drop-text{ font-size:12px; color: var(--text-dim); }
+  .drop-text b{ color: var(--primary); font-weight:600; }
+  .file-chip-list{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .file-chip{
+    display:flex; align-items:center; gap:8px; background: var(--surface-3);
+    border:1px solid var(--border-soft); border-radius:7px; padding:7px 9px; font-size:12px;
+  }
+  .file-chip-icon{ color: var(--text-faint); flex-shrink:0; }
+  .file-chip-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .file-chip-remove{ background:none; border:none; color: var(--text-faint); cursor:pointer; font-size:14px; flex-shrink:0; padding:0 3px; }
+  .file-chip-remove:hover{ color: var(--fail); }
+
+  .set-error{
+    margin-top:12px; background: var(--fail-dim); border:1px solid var(--fail);
+    color:#f3c9c6; font-size:12.5px; padding:9px 12px; border-radius:7px;
+  }
+
+  /* Extracted data preview */
+  .extract-section{ margin-top:18px; border-top:1px solid var(--border-soft); padding-top:16px; }
+  .extract-title{ font-family: var(--font-display); font-size:12.5px; font-weight:600; color: var(--text-dim); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:10px; }
+  .manifest-table{ width:100%; border-collapse: collapse; font-family: var(--font-mono); font-size:12.5px; }
+  .manifest-table th{
+    text-align:left; font-family: var(--font-body); font-weight:600; font-size:11px;
+    color: var(--text-faint); text-transform:uppercase; letter-spacing:0.3px;
+    padding: 6px 10px; border-bottom: 1px solid var(--border-soft);
+  }
+  .manifest-table td{ padding: 9px 10px; border-bottom: 1px solid var(--border-soft); vertical-align:top; }
+  .manifest-table tr:last-child td{ border-bottom:none; }
+  .field-name{ font-family: var(--font-body); color: var(--text-dim); font-size:12.5px; white-space:nowrap; }
+  .status-icon{ display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; font-size:11px; font-weight:700; }
+  .status-icon.ok{ background: var(--pass-dim); color: var(--pass); }
+  .status-icon.bad{ background: var(--fail-dim); color: var(--fail); }
+  .status-icon.warn{ background: var(--warn-dim); color: var(--warn); }
+  .status-icon.na{ background: var(--surface-3); color: var(--text-faint); }
+  .val-source{ color: var(--text); }
+  .val-review{ color: var(--text); }
+  .val-missing{ color: var(--text-faint); font-style:italic; }
+
+  /* Stamp / verdict */
+  .verdict{
+    margin-top:18px; display:flex; align-items:center; gap:14px;
+    padding: 14px 16px; border-radius: 9px; border:1px solid var(--border-soft);
+  }
+  .verdict.pass{ background: var(--pass-dim); border-color: rgba(79,168,140,0.5); }
+  .verdict.fail{ background: var(--fail-dim); border-color: rgba(217,104,95,0.5); }
+  .verdict.warn{ background: var(--warn-dim); border-color: rgba(226,163,61,0.5); }
+  .stamp{
+    width:48px; height:48px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; font-weight:700; font-family: var(--font-display);
+    border: 2.5px solid currentColor; transform: rotate(-8deg);
+    animation: stamp-in 0.35s cubic-bezier(.2,1.6,.4,1);
+  }
+  .verdict.pass .stamp{ color: var(--pass); }
+  .verdict.fail .stamp{ color: var(--fail); }
+  .verdict.warn .stamp{ color: var(--warn); }
+  @keyframes stamp-in{ from{ transform: scale(1.6) rotate(-8deg); opacity:0; } to{ transform: scale(1) rotate(-8deg); opacity:1; } }
+  .verdict-text b{ font-family: var(--font-display); font-size:14.5px; display:block; margin-bottom:2px; }
+  .verdict.pass .verdict-text b{ color: var(--pass); }
+  .verdict.fail .verdict-text b{ color: var(--fail); }
+  .verdict.warn .verdict-text b{ color: var(--warn); }
+  .verdict-text span{ font-size:12px; color: var(--text-dim); }
+
+  .confirm-btn{
+    margin-top:14px; background: var(--surface-3); border:1px solid var(--border);
+    color: var(--text); font-family: var(--font-body); font-weight:600; font-size:13px;
+    padding: 9px 16px; border-radius:7px; cursor:pointer;
+  }
+  .verdict.pass ~ .confirm-btn, .confirm-btn.pass{ border-color: var(--pass); color: var(--pass); }
+  .confirm-btn:hover{ filter: brightness(1.2); }
+  .zone-label-row{ display:flex; align-items:center; justify-content:space-between; }
+  .clear-zone-btn{
+    background:none; border:none; color: var(--text-faint); font-size:11px; cursor:pointer;
+    padding:2px 4px; font-family: var(--font-body); text-decoration: underline;
+  }
+  .clear-zone-btn:hover{ color: var(--fail); }
+  .mismatch-list{ margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+  .mismatch-item{
+    background: var(--surface-2); border:1px solid var(--border-soft); border-left:3px solid var(--fail);
+    border-radius:7px; padding:10px 12px;
+  }
+  .mismatch-item.warn-item{ border-left-color: var(--warn); }
+  .mismatch-item .mi-title{ font-size:12.5px; font-weight:600; color:#f0b3af; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+  .mismatch-item.warn-item .mi-title{ color:#f0d2a3; }
+  .mismatch-item .mi-note{ font-size:12px; color: var(--text-dim); margin-top:6px; font-style:italic; }
+  .mismatch-item .mi-compare{ display:flex; gap:22px; font-family: var(--font-mono); font-size:12px; }
+  .mi-col .mi-col-label{ font-family: var(--font-body); color: var(--text-faint); font-size:10.5px; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:2px; }
+  .mi-col .mi-col-val{ color: var(--text); }
+
+  .loading-row{ display:flex; align-items:center; gap:10px; padding:14px 0; font-size:12.5px; color: var(--text-dim); }
+  .spinner{
+    width:15px; height:15px; border-radius:50%; border:2px solid var(--surface-3);
+    border-top-color: var(--primary); animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  .add-set-btn{
+    width:100%; padding: 14px; border-radius: var(--radius); border:1.5px dashed var(--border);
+    background: transparent; color: var(--text-dim); font-family: var(--font-body); font-size:13.5px;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .add-set-btn:hover{ border-color: var(--primary); color: var(--text); background: rgba(111,155,209,0.05); }
+
+  /* Bottom bar */
+  .bottom-bar{
+    position: fixed; bottom:0; left:0; right:0; z-index: 50;
+    background: rgba(20,27,36,0.92); backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border-soft);
+    padding: 14px 24px;
+  }
+  .bottom-bar-inner{
+    max-width: 980px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px;
+  }
+  .summary-strip{ display:flex; gap:16px; font-size:12.5px; color: var(--text-dim); flex-wrap:wrap; }
+  .summary-strip span b{ color: var(--text); }
+  .check-btn{
+    background: linear-gradient(150deg, var(--primary), #4a7ab8);
+    color: #0d151d; font-weight:600; font-family: var(--font-body); font-size:14px;
+    border:none; border-radius:9px; padding: 12px 26px; cursor:pointer;
+    box-shadow: 0 2px 14px rgba(111,155,209,0.25);
+    display:flex; align-items:center; gap:8px; flex-shrink:0;
+  }
+  .check-btn:hover{ filter: brightness(1.08); }
+  .check-btn:disabled{ opacity:0.55; cursor:not-allowed; filter:none; }
+  .check-btn .spinner{ border-top-color: #0d151d; border-color: rgba(13,21,29,0.3); }
+
+  .export-btn{
+    background: var(--surface-2); border:1px solid var(--border);
+    color: var(--text); font-weight:600; font-family: var(--font-body); font-size:13.5px;
+    border-radius:9px; padding: 11px 20px; cursor:pointer;
+    display:flex; align-items:center; gap:8px; flex-shrink:0;
+  }
+  .export-btn:hover{ border-color: var(--primary); background: var(--primary-dim); }
+  .export-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+  .progress-track{
+    width:100%; height:4px; border-radius:3px; background: var(--surface-3);
+    overflow:hidden; margin-bottom:10px; display:none;
+  }
+  .progress-track.active{ display:block; }
+  .progress-fill{
+    height:100%; width:0%; background: linear-gradient(90deg, var(--primary), #4a7ab8);
+    transition: width 0.25s ease;
+  }
+  .progress-label{
+    font-size:11.5px; color: var(--text-dim); margin-bottom:8px; display:none; font-family: var(--font-mono);
+  }
+  .progress-label.active{ display:block; }
+
+  .global-error{
+    background: var(--fail-dim); border:1px solid var(--fail); color:#f3c9c6;
+    font-size:12.5px; padding:10px 14px; border-radius:8px; margin-bottom:16px;
+    display:flex; align-items:center; gap:8px;
+  }
+
+  input[type=file]{ display:none; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark"><img src="data:image/png;base64,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" alt="CJZ logo" /></div>
+    <div class="brand-text">
+      <h1>CJZ - CargoCheck</h1>
+      <p>Customs document verification — prototype</p>
+    </div>
+  </div>
+  <div class="lang-select">
+    <span>Language</span>
+    <select id="langSelect">
+      <option value="en">English</option>
+      <option value="hr">Croatian (soon)</option>
+      <option value="sl">Slovenian (soon)</option>
+      <option value="pl">Polish (soon)</option>
+      <option value="ro">Romanian (soon)</option>
+    </select>
+  </div>
+</header>
+
+<main>
+  <div class="rules-panel">
+    <div class="rules-header" id="rulesHeader">
+      <div class="rules-header-left">
+        <h2>Verification rules</h2>
+        <span class="rule-count-badge rule-tag" id="ruleCountBadge">0 active</span>
+      </div>
+      <span class="chevron" id="rulesChevron">▾</span>
+    </div>
+    <div class="rules-body" id="rulesBody"></div>
+  </div>
+
+  <div id="globalErrorSlot"></div>
+  <div id="setsContainer"></div>
+
+  <button class="add-set-btn" id="addSetBtn">+ Add document set</button>
+</main>
+
+<div class="bottom-bar">
+  <div class="bottom-bar-inner" style="flex-direction:column; align-items:stretch;">
+    <div class="progress-label" id="progressLabel">Checking… 0%</div>
+    <div class="progress-track" id="progressTrack"><div class="progress-fill" id="progressFill"></div></div>
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
+      <div class="summary-strip" id="summaryStrip">
+        <span><b id="setCount">0</b> document sets</span>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="export-btn" id="exportBtn" disabled>Export results to Excel</button>
+        <button class="check-btn" id="checkAllBtn">Check all sets</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------------------------------------------------------
+   Field definitions
+--------------------------------------------------------- */
+const FIELD_LIBRARY = {
+  netWeight:      { label: "Net weight", unit: "kg", type: "number" },
+  grossWeight:    { label: "Gross weight", unit: "kg", type: "number" },
+  currency:       { label: "Currency", type: "text" },
+  totalAmount:    { label: "Total amount", type: "number" },
+  incoterms:      { label: "Incoterms", type: "text", hint: "Extract ONLY the 3-letter Incoterms rule code (e.g. FOB, EXW, CIP, FCA, CIF, CFR, CPT, DAP, DPU, DDP, FAS). Do NOT include the named place or port that follows it — e.g. if the document says 'FOB Qingdao', return just 'FOB'." },
+  totalQuantity:  { label: "Total quantity of goods", type: "number", hint: "The total quantity of goods/units for the entire shipment (e.g. total pieces, PCS, or quantity of items) — NOT the number of physical cartons, boxes, or 'outer cartons' used for packing, which is a different metric. If a document shows both a goods quantity total (e.g. 'Total PCS', 'Quantity') AND a separate cartons/packages total (e.g. 'Outer Cartons', 'Total Cartons'), always use the goods quantity total, never the carton/package count. Many documents list several goods items (line items) each with their own quantity — if there is no single explicit grand total for quantity, ADD UP the quantity of every line item yourself. Do not use just one line item's value." },
+  originCountry:  { label: "Country of origin", type: "text" },
+  destCountry:    { label: "Country of destination (customs declaration)", type: "text", hint: "Only extract this if the document has an EXPLICIT formal 'country of destination' field (e.g. customs declaration box 17, 'Rendeltetési ország', 'Land van bestemming', 'Pays de destination'). This is a formal customs classification that may legitimately differ from the actual recipient's country (e.g. when a customs broker clears goods for onward intra-EU movement). Do NOT derive this from an address, and do NOT use a 'Port of discharge' or 'Country of final discharge' field. If the document has no such explicit field, return null — do not guess." },
+  recipientCountry: { label: "Recipient country", type: "text", hint: "The country of the actual Importer / Consignee / Buyer (the party receiving and owning the goods) — derive this from their address. Do NOT use the Declarant's or Representative's country (a customs broker/agent filing paperwork on someone else's behalf, often based in a different country than the actual buyer), and do NOT use a 'Port of discharge' field." },
+  invoiceNumber:  { label: "Invoice number", type: "text", hint: "May not be explicitly labeled 'invoice number'. On EU customs declarations it is very often referenced under a supporting/previous document entry using the code 'N380' (the EU code for 'invoice') followed by the reference number — e.g. a line reading 'N380 J26HSZ038' means the invoice number is J26HSZ038. Also check labels in other languages, e.g. 'Alátámasztó okmányok', 'Faktura', 'Numer faktury'." },
+  pluNumber:      { label: "PLU number", type: "text", missingLabel: "Not specified" },
+  shipperAddress:   { label: "Sender address", type: "text" },
+  recipientAddress: { label: "Recipient address", type: "text" },
+  hsCode:         { label: "HS code", type: "text" },
+  hsDescription:  { label: "HS code description", type: "text" },
+};
+
+function defaultRules(){
+  return [
+    { id: "r_net", field: "netWeight", label: "Net weight matches", compare: "numeric", tolerance: 0.5, enabled: true, builtin: true },
+    { id: "r_gross", field: "grossWeight", label: "Gross weight matches", compare: "numeric", tolerance: 0.5, enabled: true, builtin: true },
+    { id: "r_gross_ge_net", field: "grossWeight", label: "Gross weight not lower than net weight", compare: "gte_internal", against: "netWeight", enabled: true, builtin: true },
+    { id: "r_currency", field: "currency", label: "Currency matches", compare: "text", enabled: true, builtin: true },
+    { id: "r_amount", field: "totalAmount", label: "Total amount matches", compare: "numeric", tolerance: 0.01, enabled: true, builtin: true },
+    { id: "r_incoterms", field: "incoterms", label: "Incoterms match", compare: "text", enabled: true, builtin: true },
+    { id: "r_packages", field: "totalQuantity", label: "Total quantity matches", compare: "numeric", tolerance: 0, enabled: true, builtin: true },
+    { id: "r_origin", field: "originCountry", label: "Country of origin matches", compare: "text", enabled: true, builtin: true },
+    { id: "r_dest", field: "destCountry", label: "Country of destination matches (customs declaration)", compare: "text", enabled: true, builtin: true },
+    { id: "r_recipient_country", field: "recipientCountry", label: "Recipient country matches", compare: "text", enabled: true, builtin: true },
+    { id: "r_invoice", field: "invoiceNumber", label: "Invoice number matches", compare: "text", enabled: true, builtin: true },
+    { id: "r_plu", field: "pluNumber", label: "PLU number matches", compare: "text", enabled: true, builtin: true },
+    { id: "r_shipper", field: "shipperAddress", label: "Sender address matches", compare: "ai_semantic", enabled: true, builtin: true },
+    { id: "r_recipient", field: "recipientAddress", label: "Recipient address matches", compare: "ai_semantic", enabled: true, builtin: true },
+    { id: "r_hs", field: "hsCode", label: "HS code matches its description", compare: "hs_plausibility", enabled: true, builtin: true },
+  ];
+}
+
+/* ---------------------------------------------------------
+   State
+--------------------------------------------------------- */
+let state = {
+  rules: defaultRules(),
+  sets: [],
+  rulesOpen: false,
+};
+
+function uid(prefix){ return prefix + "_" + Math.random().toString(36).slice(2, 9); }
+
+function newSet(){
+  return {
+    id: uid("set"),
+    customName: null,  // null = use auto "N. Document set" based on position
+    sourceFiles: [],
+    reviewFiles: [],
+    status: "idle",   // idle | checking | done
+    error: null,
+    result: null,     // { extractedSource, extractedReview, comparisons, overallPass }
+  };
+}
+
+function resetApp(){
+  state.sets = [newSet()];
+  showGlobalError(null);
+  const exportBtn = document.getElementById("exportBtn");
+  if(exportBtn) exportBtn.disabled = true;
+  renderSets();
+}
+
+/* ---------------------------------------------------------
+   Rendering: rules panel
+--------------------------------------------------------- */
+function renderRules(){
+  const activeCount = state.rules.filter(r => r.enabled).length;
+  document.getElementById("ruleCountBadge").textContent = activeCount + " active";
+
+  const body = document.getElementById("rulesBody");
+  body.classList.toggle("open", state.rulesOpen);
+  document.getElementById("rulesChevron").classList.toggle("open", state.rulesOpen);
+
+  let html = "";
+  state.rules.forEach(rule => {
+    const fieldMeta = FIELD_LIBRARY[rule.field] || { label: rule.field };
+    let metaText = "";
+    if(rule.compare === "numeric") metaText = "numeric match" + (rule.tolerance ? " · ±" + rule.tolerance + (fieldMeta.unit || "") : "");
+    else if(rule.compare === "text") metaText = "text match";
+    else if(rule.compare === "gte_internal") metaText = "internal consistency check";
+    else if(rule.compare === "hs_plausibility") metaText = "AI plausibility check (not a tariff lookup)";
+    else if(rule.compare === "ai_semantic") metaText = "AI semantic match (ignores formatting differences)";
+    html += `
+      <div class="rule-row" data-rule="${rule.id}">
+        <div class="toggle ${rule.enabled ? 'on':''}" data-action="toggle-rule" data-id="${rule.id}"><div class="toggle-dot"></div></div>
+        <div class="rule-label">
+          <div class="name">${rule.label}</div>
+          <div class="meta">${metaText}</div>
+        </div>
+        <div class="rule-tag">${fieldMeta.label}</div>
+        ${rule.builtin ? "" : `<button class="rule-remove" data-action="remove-rule" data-id="${rule.id}">✕</button>`}
+      </div>`;
+  });
+
+  html += `<button class="add-rule-btn" id="addRuleBtn">+ Add custom rule</button>`;
+  html += `<div id="addRuleFormSlot"></div>`;
+  body.innerHTML = html;
+}
+
+function renderAddRuleForm(){
+  const slot = document.getElementById("addRuleFormSlot");
+  slot.innerHTML = `
+    <div class="add-rule-form">
+      <div class="row">
+        <input type="text" id="newRuleLabel" placeholder="Rule name (e.g. Invoice number matches)" />
+      </div>
+      <div class="row">
+        <input type="text" id="newRuleField" placeholder="Field to extract (e.g. invoice date)" />
+        <select id="newRuleCompare">
+          <option value="text">Text match (exact)</option>
+          <option value="numeric">Numeric match</option>
+          <option value="ai_semantic">AI match (ignores formatting)</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button class="btn-small" id="cancelRuleBtn">Cancel</button>
+        <button class="btn-small primary" id="saveRuleBtn">Add rule</button>
+      </div>
+    </div>`;
+  document.getElementById("cancelRuleBtn").onclick = () => { slot.innerHTML = ""; };
+  document.getElementById("saveRuleBtn").onclick = () => {
+    const label = document.getElementById("newRuleLabel").value.trim();
+    const fieldRaw = document.getElementById("newRuleField").value.trim();
+    const compare = document.getElementById("newRuleCompare").value;
+    if(!label || !fieldRaw){ return; }
+    const fieldKey = "custom_" + fieldRaw.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
+    FIELD_LIBRARY[fieldKey] = { label: fieldRaw, type: compare === "numeric" ? "number" : "text" };
+    state.rules.push({ id: uid("rule"), field: fieldKey, label, compare, tolerance: compare==="numeric"?0.01:undefined, enabled: true, builtin: false });
+    renderRules();
+  };
+}
+
+document.getElementById("rulesHeader").onclick = () => {
+  state.rulesOpen = !state.rulesOpen;
+  renderRules();
+};
+
+document.getElementById("rulesBody").addEventListener("click", (e) => {
+  const t = e.target.closest("[data-action]");
+  if(!t) return;
+  const action = t.dataset.action;
+  const id = t.dataset.id;
+  if(action === "toggle-rule"){
+    const r = state.rules.find(r => r.id === id);
+    r.enabled = !r.enabled;
+    renderRules();
+  } else if(action === "remove-rule"){
+    state.rules = state.rules.filter(r => r.id !== id);
+    renderRules();
+  }
+});
+document.getElementById("rulesBody").addEventListener("click", (e) => {
+  if(e.target.id === "addRuleBtn") renderAddRuleForm();
+});
+
+/* ---------------------------------------------------------
+   Rendering: document sets
+--------------------------------------------------------- */
+function fileIcon(file){
+  if(file.type === "application/pdf") return "▤";
+  return "▧";
+}
+
+function renderSets(){
+  const container = document.getElementById("setsContainer");
+  document.getElementById("setCount").textContent = state.sets.length;
+  if(state.sets.length === 0){
+    container.innerHTML = `<div style="text-align:center; padding: 40px 10px; color: var(--text-faint); font-size:13px;">
+      No document sets yet. Add one to get started.
+    </div>`;
+    return;
+  }
+  container.innerHTML = state.sets.map((s, i) => renderSetCard(s, i)).join("");
+  state.sets.forEach((s, i) => bindSetEvents(s, i));
+}
+
+function renderFileChips(files, setId, zone){
+  if(files.length === 0) return "";
+  return `<div class="file-chip-list">` + files.map((f, idx) => `
+    <div class="file-chip">
+      <span class="file-chip-icon">${fileIcon(f.file)}</span>
+      <span class="file-chip-name">${f.file.name}</span>
+      <button class="file-chip-remove" data-action="remove-file" data-set="${setId}" data-zone="${zone}" data-idx="${idx}">✕</button>
+    </div>`).join("") + `</div>`;
+}
+
+function renderExtractTable(set){
+  if(!set.result) return "";
+  const rows = set.result.comparisons.map(c => {
+    const icon = c.status === "pass" ? `<span class="status-icon ok">✓</span>`
+               : c.status === "fail" ? `<span class="status-icon bad">✕</span>`
+               : c.status === "warn" ? `<span class="status-icon warn">!</span>`
+               : `<span class="status-icon na">–</span>`;
+    const missingText = (FIELD_LIBRARY[c.field] && FIELD_LIBRARY[c.field].missingLabel) || "not found";
+    const sv = c.sourceValue === null || c.sourceValue === undefined || c.sourceValue === ""
+      ? `<span class="val-missing">${missingText}</span>` : `<span class="val-source">${c.sourceValue}</span>`;
+    const rv = c.reviewValue === null || c.reviewValue === undefined || c.reviewValue === ""
+      ? `<span class="val-missing">${missingText}</span>` : `<span class="val-review">${c.reviewValue}</span>`;
+    return `<tr>
+      <td class="field-name">${c.label}</td>
+      <td>${sv}</td>
+      <td>${rv}</td>
+      <td>${icon}</td>
+    </tr>`;
+  }).join("");
+
+  return `
+    <div class="extract-section">
+      <div class="extract-title">Extracted &amp; compared data</div>
+      <table class="manifest-table">
+        <thead><tr><th>Field</th><th>Source documents</th><th>Document under review</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderVerdict(set){
+  if(!set.result) return "";
+  const comparisons = set.result.comparisons;
+  const failCount = comparisons.filter(c => c.status === "fail").length;
+  const warnItems = comparisons.filter(c => c.status === "warn");
+  const mismatches = comparisons.filter(c => c.status === "fail");
+  const verdictClass = failCount > 0 ? "fail" : (warnItems.length > 0 ? "warn" : "pass");
+  const stampChar = failCount > 0 ? "✕" : (warnItems.length > 0 ? "!" : "✓");
+  let headline;
+  if(failCount > 0) headline = failCount + " discrepanc" + (failCount===1?"y":"ies") + " found";
+  else if(warnItems.length > 0) headline = "OK, with " + warnItems.length + " item" + (warnItems.length===1?"":"s") + " to double-check";
+  else headline = "OK — no discrepancies found";
+  const subtext = failCount > 0 ? "Review the fields below."
+    : warnItems.length > 0 ? "No hard mismatches, but see the notes below."
+    : "All active rules passed for this document set.";
+
+  let html = `
+    <div class="verdict ${verdictClass}">
+      <div class="stamp">${stampChar}</div>
+      <div class="verdict-text">
+        <b>${headline}</b>
+        <span>${subtext}</span>
+      </div>
+    </div>`;
+
+  if(mismatches.length > 0){
+    html += `<div class="mismatch-list">` + mismatches.map(m => `
+      <div class="mismatch-item">
+        <div class="mi-title">✕ ${m.label}</div>
+        <div class="mi-compare">
+          <div class="mi-col"><div class="mi-col-label">Source</div><div class="mi-col-val">${m.sourceValue ?? "—"}</div></div>
+          <div class="mi-col"><div class="mi-col-label">Document under review</div><div class="mi-col-val">${m.reviewValue ?? "—"}</div></div>
+        </div>
+        ${m.note ? `<div class="mi-note">${m.note}</div>` : ""}
+      </div>`).join("") + `</div>`;
+  }
+  if(warnItems.length > 0){
+    html += `<div class="mismatch-list">` + warnItems.map(w => `
+      <div class="mismatch-item warn-item">
+        <div class="mi-title">! ${w.label}</div>
+        <div class="mi-compare">
+          <div class="mi-col"><div class="mi-col-label">Source</div><div class="mi-col-val">${w.sourceValue ?? "—"}</div></div>
+          <div class="mi-col"><div class="mi-col-label">Document under review</div><div class="mi-col-val">${w.reviewValue ?? "—"}</div></div>
+        </div>
+        ${w.note ? `<div class="mi-note">${w.note}</div>` : ""}
+      </div>`).join("") + `</div>`;
+  }
+  html += `<button class="confirm-btn ${verdictClass === 'fail' ? '' : 'pass'}" data-action="confirm-results">Confirm results</button>`;
+  return html;
+}
+
+function renderSetCard(set, pos){
+  const displayNumber = pos + 1;
+  const title = set.customName !== null ? set.customName : (displayNumber + ". Document set");
+  const removable = pos > 0;
+  const errorHtml = set.error ? `<div class="set-error">⚠ ${set.error}</div>` : "";
+  let bottomHtml = "";
+  if(set.status === "checking"){
+    bottomHtml = `<div class="loading-row"><div class="spinner"></div> Extracting and comparing documents…</div>`;
+  } else if(set.status === "done" && set.result){
+    bottomHtml = renderExtractTable(set) + renderVerdict(set);
+  }
+
+  return `
+    <div class="set-card" data-set="${set.id}">
+      <div class="set-head">
+        <div class="set-title-wrap">
+          <div class="set-index">${displayNumber}</div>
+          <input class="set-title" value="${title}" data-action="rename-set" data-set="${set.id}" />
+        </div>
+        ${removable ? `<button class="set-remove" data-action="remove-set" data-set="${set.id}">Remove</button>` : ""}
+      </div>
+      <div class="set-body">
+        <div class="upload-grid">
+          <div class="upload-zone" data-zone="source" data-set="${set.id}">
+            <div class="zone-label-row">
+              <div class="upload-zone-label">Original documents</div>
+              ${set.sourceFiles.length ? `<button class="clear-zone-btn" data-action="clear-zone" data-zone="source" data-set="${set.id}">Clear all</button>` : ""}
+            </div>
+            <div class="upload-zone-hint">Invoice, packing list, etc. — multiple files allowed</div>
+            <div class="drop-inner" data-action="open-picker" data-zone="source" data-set="${set.id}">
+              <div class="drop-icon">⇧</div>
+              <div class="drop-text"><b>Click to upload</b> or drag files here</div>
+            </div>
+            ${renderFileChips(set.sourceFiles, set.id, "source")}
+          </div>
+          <div class="upload-zone" data-zone="review" data-set="${set.id}">
+            <div class="zone-label-row">
+              <div class="upload-zone-label">Document under review</div>
+              ${set.reviewFiles.length ? `<button class="clear-zone-btn" data-action="clear-zone" data-zone="review" data-set="${set.id}">Clear all</button>` : ""}
+            </div>
+            <div class="upload-zone-hint">Import / export customs document</div>
+            <div class="drop-inner" data-action="open-picker" data-zone="review" data-set="${set.id}">
+              <div class="drop-icon">⇧</div>
+              <div class="drop-text"><b>Click to upload</b> or drag files here</div>
+            </div>
+            ${renderFileChips(set.reviewFiles, set.id, "review")}
+          </div>
+        </div>
+        ${errorHtml}
+        ${bottomHtml}
+      </div>
+    </div>`;
+}
+
+function bindSetEvents(set, pos){
+  const card = document.querySelector(`.set-card[data-set="${set.id}"]`);
+  if(!card) return;
+
+  card.querySelectorAll('[data-action="open-picker"]').forEach(el => {
+    el.addEventListener("click", () => {
+      const input = document.createElement("input");
+      input.type = "file"; input.multiple = true; input.accept = "application/pdf,image/*";
+      input.onchange = (e) => addFiles(set.id, el.dataset.zone, Array.from(e.target.files));
+      input.click();
+    });
+  });
+
+  card.querySelectorAll(".upload-zone").forEach(zoneEl => {
+    zoneEl.addEventListener("dragover", (e) => { e.preventDefault(); zoneEl.classList.add("drag"); });
+    zoneEl.addEventListener("dragleave", () => zoneEl.classList.remove("drag"));
+    zoneEl.addEventListener("drop", (e) => {
+      e.preventDefault(); zoneEl.classList.remove("drag");
+      addFiles(set.id, zoneEl.dataset.zone, Array.from(e.dataTransfer.files));
+    });
+  });
+
+  card.querySelectorAll('[data-action="remove-file"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      const s = state.sets.find(s => s.id === btn.dataset.set);
+      const list = btn.dataset.zone === "source" ? s.sourceFiles : s.reviewFiles;
+      list.splice(Number(btn.dataset.idx), 1);
+      renderSets();
+    });
+  });
+
+  card.querySelectorAll('[data-action="clear-zone"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      const s = state.sets.find(s => s.id === btn.dataset.set);
+      if(btn.dataset.zone === "source") s.sourceFiles = []; else s.reviewFiles = [];
+      renderSets();
+    });
+  });
+
+  const confirmBtn = card.querySelector('[data-action="confirm-results"]');
+  if(confirmBtn) confirmBtn.addEventListener("click", resetApp);
+
+  const removeBtn = card.querySelector('[data-action="remove-set"]');
+  if(removeBtn) removeBtn.addEventListener("click", () => {
+    state.sets = state.sets.filter(s => s.id !== set.id);
+    renderSets();
+  });
+
+  const titleInput = card.querySelector('[data-action="rename-set"]');
+  if(titleInput) titleInput.addEventListener("change", () => {
+    set.customName = titleInput.value.trim() || null;
+    renderSets();
+  });
+}
+
+function addFiles(setId, zone, files){
+  const set = state.sets.find(s => s.id === setId);
+  if(!set) return;
+  files.forEach(file => {
+    const target = zone === "source" ? set.sourceFiles : set.reviewFiles;
+    target.push({ file });
+  });
+  set.error = null;
+  renderSets();
+}
+
+/* ---------------------------------------------------------
+   Add / remove sets
+--------------------------------------------------------- */
+document.getElementById("addSetBtn").addEventListener("click", () => {
+  state.sets.push(newSet());
+  renderSets();
+});
+
+/* ---------------------------------------------------------
+   File -> base64
+--------------------------------------------------------- */
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ---------------------------------------------------------
+   Extraction via Claude API
+--------------------------------------------------------- */
+async function extractFromFile(fileWrap, activeFields){
+  const file = fileWrap.file;
+  const base64 = await fileToBase64(file);
+  const isPdf = file.type === "application/pdf";
+  const contentBlock = isPdf
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+    : { type: "image", source: { type: "base64", media_type: file.type || "image/png", data: base64 } };
+
+  const fieldDescriptions = activeFields.map(key => {
+    const meta = FIELD_LIBRARY[key];
+    let line = `- ${key}: ${meta.label}${meta.unit ? " (unit: " + meta.unit + ")" : ""}`;
+    if(meta.hint) line += ` — ${meta.hint}`;
+    return line;
+  }).join("\n");
+
+  const systemPrompt = `You are extracting structured data from a trade / customs document (invoice, packing list, or import/export customs declaration). The document may be in English, Czech, Hungarian, Polish, Romanian, Slovenian, or Croatian. Find the following fields regardless of the language of the label used in the document:
+${fieldDescriptions}
+
+IMPORTANT — read the whole document carefully before answering:
+- Many customs declarations and invoices list multiple separate goods items (line items), each on its own with its own quantity, weight, and value — sometimes across several pages. Go through every single line item on every page; do not stop at the first one you see.
+- For any field that represents a total for the entire shipment/document (e.g. total quantity, total number of packages), first check if the document already states an explicit grand total. If it does not, you must calculate the total yourself by adding together the corresponding value from every line item. Double-check your addition before answering — do not guess or use a single line item's value as if it were the total.
+- Be careful not to confuse a per-item sub-value (such as a colli/carton/package count that belongs to only one line item) with the shipment-wide total being asked for.
+- If a document-level total field already exists and states the total explicitly, prefer that stated total over your own manual sum.
+
+Do any counting, adding, or reasoning silently in your head — do NOT write it out. Respond with ONLY a JSON object and absolutely nothing else: no explanation, no markdown formatting, no notes, no shown arithmetic, no text before or after the JSON. The entire response must be a single valid JSON object mapping each field key above to its value found in the document, or null if not present. Numbers should be plain numbers (no thousands separators, use "." as decimal separator). Country names should be normalized to English if possible. Currency should be the 3-letter ISO code if identifiable (e.g. EUR, CZK, PLN).`;
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1500,
+      system: systemPrompt,
+      messages: [{ role: "user", content: [contentBlock, { type: "text", text: "Extract the fields as instructed." }] }],
+    }),
+  });
+
+  let data;
+  try{
+    data = await response.json();
+  } catch(e){
+    throw new Error(`Failed to read "${file.name}": the server did not return a valid response (HTTP ${response.status}).`);
+  }
+
+  if(!response.ok || data.error){
+    const reason = data?.error?.message || `HTTP ${response.status}`;
+    throw new Error(`Failed to read "${file.name}": ${reason}`);
+  }
+
+  const textBlock = (data.content || []).find(b => b.type === "text");
+  if(!textBlock || !textBlock.text){
+    throw new Error(`Failed to read "${file.name}": no data was returned for this document.`);
+  }
+
+  let parsed;
+  try{
+    let cleaned = textBlock.text.replace(/```json|```/g, "").trim();
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if(firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace){
+      cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+    }
+    parsed = JSON.parse(cleaned);
+  } catch(e){
+    throw new Error(`Failed to read "${file.name}": the extracted data could not be understood. Try re-uploading this file.`);
+  }
+  return parsed;
+}
+
+function normalizeLoose(v){
+  if(v === null || v === undefined) return "";
+  return String(v).trim().toLowerCase().replace(/[.,;:]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function mergeWithConflicts(fileNames, extractions){
+  const merged = {};
+  const perField = {};
+  extractions.forEach((obj, idx) => {
+    Object.keys(obj || {}).forEach(k => {
+      const v = obj ? obj[k] : null;
+      if(v === null || v === undefined || v === "") return;
+      if(!perField[k]) perField[k] = [];
+      perField[k].push({ fileName: fileNames[idx] || `File ${idx+1}`, value: v });
+      if(merged[k] === undefined) merged[k] = v;
+    });
+  });
+  const conflicts = [];
+  Object.keys(perField).forEach(k => {
+    const entries = perField[k];
+    if(entries.length < 2) return;
+    const meta = FIELD_LIBRARY[k] || {};
+    const isNumeric = meta.type === "number";
+    let hasConflict = false;
+    for(let i = 1; i < entries.length; i++){
+      if(isNumeric){
+        const tol = 0.5;
+        if(Math.abs(Number(entries[i].value) - Number(entries[0].value)) > tol) hasConflict = true;
+      } else {
+        if(normalizeLoose(entries[i].value) !== normalizeLoose(entries[0].value)) hasConflict = true;
+      }
+    }
+    if(hasConflict) conflicts.push({ field: k, entries });
+  });
+  return { merged, conflicts };
+}
+
+/* ---------------------------------------------------------
+   HS code plausibility check (not a real tariff lookup —
+   an AI judgment call on whether the code and description
+   are in the same ballpark)
+--------------------------------------------------------- */
+async function checkHsPlausibility(code, description){
+  const systemPrompt = `You are an experienced customs classification reviewer. You will be given an HS (Harmonized System) tariff code and a goods description that is claimed to go with it. Judge only whether the code and the description are broadly plausible together (roughly the same category of goods) — you are not looking up an official tariff schedule, just applying general knowledge of what typical HS chapters/headings cover. Only flag a mismatch if the description clearly does not belong to the category implied by the code (e.g. a code for "live animals" paired with a description of "steel bolts").
+
+Respond with ONLY a JSON object: {"verdict": "plausible" or "mismatch", "note": "one short sentence explaining your reasoning, in plain English"}. No markdown, no extra text.`;
+
+  try{
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 300,
+        system: systemPrompt,
+        messages: [{ role: "user", content: `HS code: ${code}\nDescription: ${description}` }],
+      }),
+    });
+    const data = await response.json();
+    const textBlock = (data.content || []).find(b => b.type === "text");
+    const cleaned = (textBlock?.text || "{}").replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      mismatch: parsed.verdict === "mismatch",
+      note: parsed.note || "",
+    };
+  } catch(e){
+    return { mismatch: false, note: "", failed: true };
+  }
+}
+
+/* ---------------------------------------------------------
+   Generic AI semantic comparison (e.g. addresses) — judges
+   whether two values refer to the same real-world thing
+   despite formatting differences (line breaks, postal code
+   spacing, abbreviations, word order, country name vs code).
+--------------------------------------------------------- */
+async function checkSemanticMatch(label, valueA, valueB){
+  const systemPrompt = `You compare two text values extracted from trade/customs documents (field: "${label}") to judge whether they refer to the same real-world thing, despite differences in formatting: line breaks, punctuation, word order, postal code spacing (e.g. "61900" vs "619 00"), abbreviations, or country name vs ISO country code. Ignore harmless formatting differences. Only flag it as NOT matching if there is a genuine factual difference — a different street, house number, city, or company name.
+
+Respond with ONLY a JSON object: {"match": true or false, "note": "short reason if not matching, otherwise empty string"}. No markdown, no extra text.`;
+
+  try{
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 300,
+        system: systemPrompt,
+        messages: [{ role: "user", content: `Value A: ${valueA}\nValue B: ${valueB}` }],
+      }),
+    });
+    const data = await response.json();
+    const textBlock = (data.content || []).find(b => b.type === "text");
+    const cleaned = (textBlock?.text || "{}").replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      match: parsed.match !== false,
+      note: parsed.note || "",
+    };
+  } catch(e){
+    return { match: true, note: "", failed: true };
+  }
+}
+
+/* ---------------------------------------------------------
+   Comparison logic
+--------------------------------------------------------- */
+function normalizeText(v){
+  if(v === null || v === undefined) return "";
+  return String(v).trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalizeIncoterms(v){
+  if(v === null || v === undefined) return "";
+  const s = String(v).trim().toUpperCase();
+  const match = s.match(/^[A-Z]{3,4}/);
+  return match ? match[0] : s;
+}
+
+function compareValues(rule, sourceData, reviewData){
+  const meta = FIELD_LIBRARY[rule.field] || { label: rule.field };
+  const label = rule.label;
+
+  if(rule.compare === "gte_internal"){
+    const a = reviewData[rule.field];
+    const b = reviewData[rule.against];
+    if(a === null || a === undefined || b === null || b === undefined){
+      return { field: rule.field, label, sourceValue: null, reviewValue: (a ?? null), status: "na" };
+    }
+    const pass = Number(a) >= Number(b);
+    return {
+      field: rule.field,
+      label,
+      sourceValue: `net: ${b}${meta.unit||''}`,
+      reviewValue: `gross: ${a}${meta.unit||''}`,
+      status: pass ? "pass" : "fail",
+    };
+  }
+
+  const sv = sourceData[rule.field];
+  const rv = reviewData[rule.field];
+  const svDisplay = sv !== undefined && sv !== null && sv !== "" ? (meta.unit ? `${sv} ${meta.unit}` : sv) : null;
+  const rvDisplay = rv !== undefined && rv !== null && rv !== "" ? (meta.unit ? `${rv} ${meta.unit}` : rv) : null;
+
+  if((sv === undefined || sv === null || sv === "") || (rv === undefined || rv === null || rv === "")){
+    return { field: rule.field, label, sourceValue: svDisplay, reviewValue: rvDisplay, status: "na" };
+  }
+
+  let pass = false;
+  if(rule.compare === "numeric"){
+    const diff = Math.abs(Number(sv) - Number(rv));
+    pass = diff <= (rule.tolerance ?? 0);
+  } else if(rule.field === "incoterms"){
+    pass = normalizeIncoterms(sv) === normalizeIncoterms(rv);
+  } else {
+    pass = normalizeText(sv) === normalizeText(rv);
+  }
+  return { field: rule.field, label, sourceValue: svDisplay, reviewValue: rvDisplay, status: pass ? "pass" : "fail" };
+}
+
+/* ---------------------------------------------------------
+   Run checks
+--------------------------------------------------------- */
+function showGlobalError(msg){
+  const slot = document.getElementById("globalErrorSlot");
+  if(!msg){ slot.innerHTML = ""; return; }
+  slot.innerHTML = `<div class="global-error">⚠ ${msg}</div>`;
+}
+
+async function checkAllSets(){
+  showGlobalError(null);
+  if(state.sets.length === 0){
+    showGlobalError("Add at least one document set before running a check.");
+    return;
+  }
+
+  let hasMissing = false;
+  state.sets.forEach(set => {
+    set.error = null;
+    if(set.sourceFiles.length === 0 || set.reviewFiles.length === 0){
+      set.error = "This set needs at least one original document and one document under review.";
+      hasMissing = true;
+    }
+  });
+  renderSets();
+  if(hasMissing){
+    showGlobalError("Some document sets are missing required files. Fix the highlighted sets below and try again.");
+    return;
+  }
+
+  const activeRules = state.rules.filter(r => r.enabled);
+  const hsRule = activeRules.find(r => r.compare === "hs_plausibility");
+  const semanticRules = activeRules.filter(r => r.compare === "ai_semantic");
+  const standardRules = activeRules.filter(r => r.compare !== "hs_plausibility" && r.compare !== "ai_semantic");
+  const activeFields = Array.from(new Set(
+    activeRules.flatMap(r => {
+      const fs = [r.field, r.against].filter(Boolean);
+      if(r.compare === "hs_plausibility") fs.push("hsDescription");
+      return fs;
+    })
+  ));
+
+  // Progress tracking: count planned async steps across all sets
+  let totalSteps = 0;
+  state.sets.forEach(set => {
+    totalSteps += set.sourceFiles.length + set.reviewFiles.length;
+    if(hsRule) totalSteps += 1;
+    totalSteps += semanticRules.length;
+  });
+  let completedSteps = 0;
+  const progressTrack = document.getElementById("progressTrack");
+  const progressFill = document.getElementById("progressFill");
+  const progressLabel = document.getElementById("progressLabel");
+  function bumpProgress(){
+    completedSteps += 1;
+    const pct = totalSteps > 0 ? Math.min(100, Math.round((completedSteps / totalSteps) * 100)) : 100;
+    progressFill.style.width = pct + "%";
+    progressLabel.textContent = "Checking… " + pct + "%";
+  }
+  progressTrack.classList.add("active");
+  progressLabel.classList.add("active");
+  progressFill.style.width = "0%";
+  progressLabel.textContent = "Checking… 0%";
+
+  const checkBtn = document.getElementById("checkAllBtn");
+  checkBtn.disabled = true;
+  checkBtn.innerHTML = `<div class="spinner"></div> Checking…`;
+  document.getElementById("exportBtn").disabled = true;
+
+  for(const set of state.sets){
+    set.status = "checking";
+    renderSets();
+    try{
+      const sourceExtractions = await Promise.all(set.sourceFiles.map(f => extractFromFile(f, activeFields).then(r => { bumpProgress(); return r; })));
+      const reviewExtractions = await Promise.all(set.reviewFiles.map(f => extractFromFile(f, activeFields).then(r => { bumpProgress(); return r; })));
+      const sourceFileNames = set.sourceFiles.map(f => f.file.name);
+      const reviewFileNames = set.reviewFiles.map(f => f.file.name);
+      const { merged: sourceData, conflicts: sourceConflicts } = mergeWithConflicts(sourceFileNames, sourceExtractions);
+      const { merged: reviewData, conflicts: reviewConflicts } = mergeWithConflicts(reviewFileNames, reviewExtractions);
+      const comparisons = standardRules.map(r => compareValues(r, sourceData, reviewData));
+
+      if(hsRule){
+        const code = reviewData.hsCode || sourceData.hsCode;
+        const desc = reviewData.hsDescription || sourceData.hsDescription;
+        const svDisplay = sourceData.hsCode ? `${sourceData.hsCode}${sourceData.hsDescription ? " — " + sourceData.hsDescription : ""}` : null;
+        const rvDisplay = reviewData.hsCode ? `${reviewData.hsCode}${reviewData.hsDescription ? " — " + reviewData.hsDescription : ""}` : null;
+        if(code && desc){
+          const verdict = await checkHsPlausibility(code, desc);
+          bumpProgress();
+          comparisons.push({
+            field: "hsCode",
+            label: hsRule.label,
+            sourceValue: svDisplay,
+            reviewValue: rvDisplay,
+            status: verdict.mismatch ? "warn" : "pass",
+            note: verdict.mismatch ? "Recommend verifying the accuracy of the HS code description." : (verdict.failed ? "" : verdict.note),
+          });
+        } else {
+          bumpProgress();
+          comparisons.push({ field: "hsCode", label: hsRule.label, sourceValue: svDisplay, reviewValue: rvDisplay, status: "na" });
+        }
+      }
+
+      for(const rule of semanticRules){
+        const meta = FIELD_LIBRARY[rule.field] || { label: rule.field };
+        const sv = sourceData[rule.field];
+        const rv = reviewData[rule.field];
+        if(sv === undefined || sv === null || sv === "" || rv === undefined || rv === null || rv === ""){
+          bumpProgress();
+          comparisons.push({ field: rule.field, label: rule.label, sourceValue: sv ?? null, reviewValue: rv ?? null, status: "na" });
+          continue;
+        }
+        const verdict = await checkSemanticMatch(meta.label, sv, rv);
+        bumpProgress();
+        comparisons.push({
+          field: rule.field,
+          label: rule.label,
+          sourceValue: sv,
+          reviewValue: rv,
+          status: verdict.match ? "pass" : "fail",
+          note: verdict.match ? "" : verdict.note,
+        });
+      }
+
+      function pushConflictWarnings(conflicts, sideLabel, otherData){
+        conflicts.forEach(c => {
+          const meta = FIELD_LIBRARY[c.field] || { label: c.field };
+          const unit = meta.unit ? " " + meta.unit : "";
+          const valuesText = c.entries.map(e => `${e.fileName}: ${e.value}${unit}`).join(" · ");
+          const otherVal = otherData[c.field];
+          const otherDisplay = (otherVal !== undefined && otherVal !== null && otherVal !== "") ? `${otherVal}${unit}` : null;
+          comparisons.push({
+            field: c.field,
+            label: `${meta.label} — ${sideLabel} disagree`,
+            sourceValue: sideLabel === "original documents" ? valuesText : otherDisplay,
+            reviewValue: sideLabel === "original documents" ? otherDisplay : valuesText,
+            status: "warn",
+            note: "These uploaded files show different values for this field — please verify which one is correct.",
+          });
+        });
+      }
+      pushConflictWarnings(sourceConflicts, "original documents", reviewData);
+      pushConflictWarnings(reviewConflicts, "documents under review", sourceData);
+
+      const overallPass = comparisons.every(c => c.status !== "fail");
+      set.result = { extractedSource: sourceData, extractedReview: reviewData, comparisons, overallPass, checkedAt: new Date() };
+      set.status = "done";
+    } catch(err){
+      set.status = "done";
+      set.error = (err && err.message) ? err.message : "Something went wrong while checking this set. Please try again.";
+      set.result = null;
+    }
+    renderSets();
+  }
+
+  checkBtn.disabled = false;
+  checkBtn.innerHTML = "Check all sets";
+  progressLabel.textContent = "Done — 100%";
+  setTimeout(() => {
+    progressTrack.classList.remove("active");
+    progressLabel.classList.remove("active");
+  }, 900);
+  document.getElementById("exportBtn").disabled = !state.sets.some(s => s.result);
+}
+
+document.getElementById("checkAllBtn").addEventListener("click", checkAllSets);
+
+/* ---------------------------------------------------------
+   Export results to Excel — two flat, tabular sheets so the
+   output can be combined across exports and used to compute
+   pass/fail statistics (COUNTIF, pivot tables, etc.)
+--------------------------------------------------------- */
+function formatTimestamp(d){
+  if(!d) return "";
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function buildSummaryRows(){
+  const rows = [["Set #", "Set name", "Invoice number", "Checked at", "Rules checked", "OK", "Mismatches", "Warnings", "N/A", "Result"]];
+  state.sets.forEach((set, pos) => {
+    if(!set.result) return;
+    const title = set.customName !== null ? set.customName : ((pos + 1) + ". Document set");
+    const invoiceNum = (set.result.extractedSource && set.result.extractedSource.invoiceNumber)
+      || (set.result.extractedReview && set.result.extractedReview.invoiceNumber)
+      || "Not specified";
+    const okCount = set.result.comparisons.filter(c => c.status === "pass").length;
+    const failCount = set.result.comparisons.filter(c => c.status === "fail").length;
+    const warnCount = set.result.comparisons.filter(c => c.status === "warn").length;
+    const naCount = set.result.comparisons.filter(c => c.status === "na").length;
+    const resultText = failCount > 0 ? "Mismatch" : (warnCount > 0 ? "OK (with notes)" : "OK");
+    rows.push([
+      pos + 1,
+      title,
+      invoiceNum,
+      formatTimestamp(set.result.checkedAt),
+      set.result.comparisons.length,
+      okCount,
+      failCount,
+      warnCount,
+      naCount,
+      resultText,
+    ]);
+  });
+  return rows;
+}
+
+function buildDetailRows(){
+  const rows = [["Set #", "Set name", "Field", "Source", "Document under review", "Status", "Note"]];
+  state.sets.forEach((set, pos) => {
+    if(!set.result) return;
+    const title = set.customName !== null ? set.customName : ((pos + 1) + ". Document set");
+    set.result.comparisons.forEach(c => {
+      const statusText = c.status === "pass" ? "OK" : c.status === "fail" ? "Mismatch" : c.status === "warn" ? "Check" : "N/A";
+      rows.push([pos + 1, title, c.label, c.sourceValue ?? "", c.reviewValue ?? "", statusText, c.note || ""]);
+    });
+  });
+  return rows;
+}
+
+function exportToExcel(){
+  if(typeof XLSX === "undefined"){
+    showGlobalError("The Excel export library failed to load. Check your internet connection and try again.");
+    return;
+  }
+  const summaryRows = buildSummaryRows();
+  const detailRows = buildDetailRows();
+  if(summaryRows.length <= 1){
+    showGlobalError("There are no checked document sets to export yet.");
+    return;
+  }
+
+  const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
+  summaryWs["!cols"] = [{ wch: 7 }, { wch: 22 }, { wch: 20 }, { wch: 17 }, { wch: 13 }, { wch: 7 }, { wch: 12 }, { wch: 11 }, { wch: 7 }, { wch: 15 }];
+
+  const detailWs = XLSX.utils.aoa_to_sheet(detailRows);
+  detailWs["!cols"] = [{ wch: 7 }, { wch: 22 }, { wch: 35 }, { wch: 32 }, { wch: 32 }, { wch: 11 }, { wch: 45 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
+  XLSX.utils.book_append_sheet(wb, detailWs, "Details");
+  const today = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `cargocheck-results-${today}.xlsx`);
+}
+
+document.getElementById("exportBtn").addEventListener("click", exportToExcel);
+
+/* ---------------------------------------------------------
+   Init
+--------------------------------------------------------- */
+state.sets.push(newSet());
+renderRules();
+renderSets();
+</script>
+</body>
+</html>
